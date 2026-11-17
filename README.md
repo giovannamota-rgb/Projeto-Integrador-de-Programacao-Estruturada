@@ -1,4 +1,4 @@
-# Projeto-Integrador-de-Programa-ao-Estruturada
+# Projeto-Integrador-de-Programaçao-Estruturada
 
  Integrantes do grupo:
  GIOVANNA DA MOTA FEITOSA 
