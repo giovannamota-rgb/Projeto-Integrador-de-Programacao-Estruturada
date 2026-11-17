@@ -1,0 +1,603 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#ifdef _WIN32
+ #define LIMPAR_TELA() system("cls")
+#else
+ #define LIMPAR_TELA() system("clear")
+#endif
+
+#define MAX_INQUILINOS 10
+#define MAX_KITNETS 5
+
+typedef struct {
+    int id;
+    char nome[50];
+    char telefone[20];
+    char cpf[15];
+    int quarto_ocupado; 
+    int status_pagamento; // 0 = Inadimplente, 1 = Pago (Para RF08 e RF09)
+} Inquilino;
+
+typedef struct {
+    int numero;
+    float valor_aluguel;
+    int status; // 0 = Disponível, 1 = Ocupada
+} Kitnet;
+
+typedef enum {
+    ESTADO_SAIR = 0,
+    ESTADO_MENU_PRINCIPAL,
+    ESTADO_INQUILINOS,
+    ESTADO_KITNETS,
+    ESTADO_RELATORIOS
+} EstadoSistema;
+
+// Protótipos de Funções
+void limpar_buffer();
+int ler_opcao_segura();
+void exibir_cabecalho(const char *titulo_tela);
+void pausar_sistema();
+
+EstadoSistema processar_menu_principal();
+EstadoSistema processar_menu_inquilinos();
+EstadoSistema processar_menu_kitnets();
+EstadoSistema processar_menu_relatorios();
+
+void inicializar_sistema(Kitnet kitnets[], Inquilino inquilinos[]);
+void cadastrar_inquilino(Inquilino inquilinos[], Kitnet kitnets[]);
+void listar_inquilinos(Inquilino inquilinos[]);
+void listar_kitnets(Kitnet kitnets[]);
+void gerenciar_status_kitnet(Kitnet kitnets[]);
+void dar_baixa_inquilino(Inquilino inquilinos[], Kitnet kitnets[]);
+void registrar_pagamento(Inquilino inquilinos[], Kitnet kitnets[]);
+void relatorio_faturamento_e_inadimplencia(Inquilino inquilinos[], Kitnet kitnets[]);
+
+int total_inquilinos = 0;
+Kitnet lista_kitnets[MAX_KITNETS];
+Inquilino lista_inquilinos[MAX_INQUILINOS];
+
+int main() {
+    EstadoSistema estado_atual = ESTADO_MENU_PRINCIPAL;
+    inicializar_sistema(lista_kitnets, lista_inquilinos);
+
+    while (estado_atual != ESTADO_SAIR) {
+        switch (estado_atual) {
+            case ESTADO_MENU_PRINCIPAL:
+                estado_atual = processar_menu_principal();
+                break;
+            case ESTADO_INQUILINOS:
+                estado_atual = processar_menu_inquilinos();
+                break;
+            case ESTADO_KITNETS:
+                estado_atual = processar_menu_kitnets();
+                break;
+            case ESTADO_RELATORIOS:
+                estado_atual = processar_menu_relatorios();
+                break;
+            default:
+                printf("\nErro: Estado nao reconhecido. Retornando...\n");
+                pausar_sistema();
+                estado_atual = ESTADO_MENU_PRINCIPAL;
+                break;
+        }
+    }
+
+    LIMPAR_TELA();
+    printf("====================================================\n");
+    printf("        Obrigado por utilizar o Sistema de Kitnets! \n");
+    printf("====================================================\n");
+    return 0;
+}
+
+void limpar_buffer() {
+    int c;
+    while ((c = getchar()) != '\n' && c != EOF) {
+    }
+}
+
+int ler_opcao_segura() {
+    int opcao;
+    int resultado = scanf("%d", &opcao);
+    limpar_buffer();
+    if (resultado != 1) {
+        return -1;
+    }
+    return opcao;
+}
+
+void exibir_cabecalho(const char *titulo_tela) {
+    LIMPAR_TELA();
+    printf("====================================================\n");
+    printf("        SISTEMA DE GESTAO DE KITNETS                \n");
+    printf("====================================================\n");
+    printf(" Modulo: %s\n", titulo_tela);
+    printf("----------------------------------------------------\n");
+}
+
+void pausar_sistema() {
+    printf("\nPressione [ENTER] para continuar...");
+    getchar();
+}
+
+void inicializar_sistema(Kitnet kitnets[], Inquilino inquilinos[]) {
+    int i;
+    for (i = 0; i < MAX_KITNETS; i++) {
+        kitnets[i].numero = 101 + i;
+        kitnets[i].valor_aluguel = 600.0f + (i * 50.0f);
+        kitnets[i].status = 0; 
+    }
+    for (i = 0; i < MAX_INQUILINOS; i++) {
+        inquilinos[i].id = 0;
+        inquilinos[i].quarto_ocupado = 0;
+        inquilinos[i].status_pagamento = 0;
+    }
+}
+
+EstadoSistema processar_menu_principal() {
+    int opcao;
+    exibir_cabecalho("Menu Principal");
+    printf(" 1 - Gerenciar Inquilinos (Cadastros/Saidas)\n");
+    printf(" 2 - Gerenciar Kitnets (Quartos)\n");
+    printf(" 3 - Relatorios e Financeiro\n");
+    printf(" 0 - Sair da Aplicacao\n");
+    printf("----------------------------------------------------\n");
+    printf("Escolha uma opcao: ");
+
+    opcao = ler_opcao_segura();
+
+    switch (opcao) {
+        case 1: return ESTADO_INQUILINOS;
+        case 2: return ESTADO_KITNETS;
+        case 3: return ESTADO_RELATORIOS;
+        case 0: return ESTADO_SAIR;
+        default:
+            printf("\nOpcao Invalida! Tente novamente.\n");
+            pausar_sistema();
+            return ESTADO_MENU_PRINCIPAL;
+    }
+}
+
+EstadoSistema processar_menu_inquilinos() {
+    int opcao;
+    exibir_cabecalho("Modulo de Inquilinos");
+    printf(" 1 - Cadastrar Novo Inquilino (Alugar Quarto)\n");
+    printf(" 2 - Listar Inquilinos Cadastrados\n");
+    printf(" 3 - Dar Baixa em Inquilino (Liberar Quarto)\n");
+    printf(" 9 - Voltar ao Menu Principal\n");
+    printf("----------------------------------------------------\n");
+    printf("Escolha uma opcao: ");
+
+    opcao = ler_opcao_segura();
+
+    switch (opcao) {
+        case 1:
+            cadastrar_inquilino(lista_inquilinos, lista_kitnets);
+            return ESTADO_INQUILINOS;
+        case 2:
+            listar_inquilinos(lista_inquilinos);
+            return ESTADO_INQUILINOS;
+        case 3:
+            dar_baixa_inquilino(lista_inquilinos, lista_kitnets);
+            return ESTADO_INQUILINOS;
+        case 9:
+            return ESTADO_MENU_PRINCIPAL;
+        default:
+            printf("\nOpcao Invalida!\n");
+            pausar_sistema();
+            return ESTADO_INQUILINOS;
+    }
+}
+
+EstadoSistema processar_menu_kitnets() {
+    int opcao;
+    exibir_cabecalho("Modulo de Kitnets (Quartos)");
+    printf(" 1 - Listar Todas as Kitnets\n");
+    printf(" 2 - Alterar Status Manual de uma Kitnet\n");
+    printf(" 3 - Filtrar Kitnets por Status\n");
+    printf(" 9 - Voltar ao Menu Principal\n");
+    printf("----------------------------------------------------\n");
+    printf("Escolha uma opcao: ");
+
+    opcao = ler_opcao_segura();
+
+    switch (opcao) {
+        case 1:
+            listar_kitnets(lista_kitnets);
+            return ESTADO_KITNETS;
+        case 2:
+            gerenciar_status_kitnet(lista_kitnets);
+            return ESTADO_KITNETS;
+        case 3: {
+            int filtro;
+            int encontrou = 0;
+            int i;
+            
+            exibir_cabecalho("Filtrar Kitnets por Status");
+            printf(" 1 - Exibir apenas Disponiveis\n");
+            printf(" 2 - Exibir apenas Ocupadas\n");
+            printf("----------------------------------------------------\n");
+            printf("Escolha o filtro: ");
+            filtro = ler_opcao_segura();
+            
+            exibir_cabecalho("Resultado da Filtragem");
+            
+            for (i = 0; i < MAX_KITNETS; i++) {
+                if ((filtro == 1 && lista_kitnets[i].status == 0) || (filtro == 2 && lista_kitnets[i].status == 1)) {
+                    printf("Quarto %d | Valor: R$ %.2f | Status: %s\n", 
+                        lista_kitnets[i].numero, 
+                        lista_kitnets[i].valor_aluguel, 
+                        lista_kitnets[i].status == 1 ? "OCUPADA" : "DISPONIVEL");
+                    encontrou = 1;
+                }
+            }
+            if (!encontrou) {
+                printf("Nenhuma kitnet encontrada para o filtro selecionado.\n");
+            }
+            pausar_sistema();
+            return ESTADO_KITNETS;
+        }
+        case 9:
+            return ESTADO_MENU_PRINCIPAL;
+        default:
+            printf("\nOpcao Invalida!\n");
+            pausar_sistema();
+            return ESTADO_KITNETS;
+    }
+}
+
+EstadoSistema processar_menu_relatorios() {
+    int opcao;
+    exibir_cabecalho("Modulo Financeiro e Relatorios");
+    printf(" 1 - Registrar Pagamento de Aluguel (Emitir Recibo)\n");
+    printf(" 2 - Relatorio de Faturamento e Inadimplencia\n");
+    printf(" 9 - Voltar ao Menu Principal\n");
+    printf("----------------------------------------------------\n");
+    printf("Escolha uma opcao: ");
+
+    opcao = ler_opcao_segura();
+
+    switch (opcao) {
+        case 1:
+            registrar_pagamento(lista_inquilinos, lista_kitnets);
+            return ESTADO_RELATORIOS;
+        case 2:
+            relatorio_faturamento_e_inadimplencia(lista_inquilinos, lista_kitnets);
+            return ESTADO_RELATORIOS;
+        case 9:
+            return ESTADO_MENU_PRINCIPAL;
+        default:
+            printf("\nOpcao Invalida!\n");
+            pausar_sistema();
+            return ESTADO_RELATORIOS;
+    }
+}
+
+void cadastrar_inquilino(Inquilino inquilinos[], Kitnet kitnets[]) {
+    int i;
+    int encontrou_livre = 0;
+    int num_quarto;
+    int quarto_valido = 0;
+
+    exibir_cabecalho("Novo Cadastro de Inquilino");
+
+    if (total_inquilinos >= MAX_INQUILINOS) {
+        printf("Limite maximo de inquilinos atingido!\n");
+        pausar_sistema();
+        return;
+    }
+
+    printf("Nome do Inquilino: ");
+    scanf(" %[^\n]", inquilinos[total_inquilinos].nome);
+    limpar_buffer();
+
+    printf("Telefone: ");
+    scanf(" %[^\n]", inquilinos[total_inquilinos].telefone);
+    limpar_buffer();
+
+    printf("CPF: ");
+    scanf(" %[^\n]", inquilinos[total_inquilinos].cpf);
+    limpar_buffer();
+
+    printf("\nKitnets Disponiveis:\n");
+    
+    for (i = 0; i < MAX_KITNETS; i++) {
+        if (kitnets[i].status == 0) {
+            printf(" - Quarto %d (R$ %.2f)\n", kitnets[i].numero, kitnets[i].valor_aluguel);
+            encontrou_livre = 1;
+        }
+    }
+
+    if (!encontrou_livre) {
+        printf("Nao ha kitnets disponiveis no momento!\n");
+        pausar_sistema();
+        return;
+    }
+
+    printf("\nDigite o numero do quarto desejado para alugar: ");
+    num_quarto = ler_opcao_segura();
+
+    for (i = 0; i < MAX_KITNETS; i++) {
+        if (kitnets[i].numero == num_quarto) {
+            if (kitnets[i].status == 0) {
+                kitnets[i].status = 1; 
+                inquilinos[total_inquilinos].quarto_ocupado = num_quarto;
+                inquilinos[total_inquilinos].status_pagamento = 0; 
+                quarto_valido = 1;
+            } else {
+                printf("\nAviso: Este quarto ja esta ocupado! (Falha na Ocupacao Dupla)\n"); 
+            }
+            break;
+        }
+    }
+
+    if (quarto_valido) {
+        inquilinos[total_inquilinos].id = total_inquilinos + 1;
+        total_inquilinos++;
+        printf("\nInquilino cadastrado e quarto alugado com sucesso!\n");
+    } else {
+        printf("\nFalha no aluguel: Quarto invalido ou indisponivel!\n");
+    }
+
+    pausar_sistema();
+}
+
+void listar_inquilinos(Inquilino inquilinos[]) {
+    int i;
+    exibir_cabecalho("Lista de Inquilinos");
+
+    if (total_inquilinos == 0) {
+        printf("Nenhum inquilino cadastrado ainda.\n");
+    } else {
+        for (i = 0; i < total_inquilinos; i++) {
+            printf("ID: %d | Nome: %s | CPF: %s | Quarto: %d | Status Fin.: %s\n", 
+                inquilinos[i].id, 
+                inquilinos[i].nome, 
+                inquilinos[i].cpf,
+                inquilinos[i].quarto_ocupado,
+                inquilinos[i].status_pagamento == 1 ? "PAGO" : "PENDENTE");
+        }
+    }
+    pausar_sistema();
+}
+
+void listar_kitnets(Kitnet kitnets[]) {
+    int i;
+    exibir_cabecalho("Status de Todas as Kitnets");
+
+    for (i = 0; i < MAX_KITNETS; i++) {
+        printf("Quarto %d | Valor: R$ %.2f | Status: %s\n", 
+            kitnets[i].numero, 
+            kitnets[i].valor_aluguel, 
+            kitnets[i].status == 1 ? "OCUPADA" : "DISPONIVEL");
+    }
+    pausar_sistema();
+}
+
+void gerenciar_status_kitnet(Kitnet kitnets[]) {
+    int i;
+    int num_quarto;
+    int indice = -1;
+    int novo_status;
+
+    exibir_cabecalho("Alterar Status de Kitnet (Manual)");
+
+    for (i = 0; i < MAX_KITNETS; i++) {
+        printf("Quarto %d | Status atual: %s\n", 
+            kitnets[i].numero, 
+            kitnets[i].status == 1 ? "OCUPADA" : "DISPONIVEL");
+    }
+
+    printf("\nDigite o numero do quarto que deseja alterar: ");
+    num_quarto = ler_opcao_segura();
+
+    for (i = 0; i < MAX_KITNETS; i++) {
+        if (kitnets[i].numero == num_quarto) {
+            indice = i;
+            break;
+        }
+    }
+
+    if (indice == -1) {
+        printf("\nQuarto nao encontrado!\n");
+    } else {
+        printf("\nEscolha o novo status para o Quarto %d:\n", num_quarto);
+        printf(" 0 - Disponivel\n");
+        printf(" 1 - Ocupada\n");
+        printf("Opcao: ");
+        novo_status = ler_opcao_segura();
+
+        if (novo_status == 0 || novo_status == 1) {
+            kitnets[indice].status = novo_status;
+            printf("\nStatus do Quarto %d atualizado para %s com sucesso!\n", 
+                num_quarto, novo_status == 1 ? "OCUPADA" : "DISPONIVEL");
+        } else {
+            printf("\nOpcao de status invalida!\n");
+        }
+    }
+    pausar_sistema();
+}
+
+void dar_baixa_inquilino(Inquilino inquilinos[], Kitnet kitnets[]) {
+    int i;
+    int id_busca;
+    int indice_encontrado = -1;
+    int quarto_liberar;
+    int confirma;
+
+    exibir_cabecalho("Dar Baixa em Inquilino (Saida)");
+
+    if (total_inquilinos == 0) {
+        printf("Nao ha inquilinos cadastrados para dar baixa.\n");
+        pausar_sistema();
+        return;
+    }
+
+    printf("Inquilinos Atuais:\n");
+    for (i = 0; i < total_inquilinos; i++) {
+        printf("ID: %d | Nome: %s | Quarto: %d\n", inquilinos[i].id, inquilinos[i].nome, inquilinos[i].quarto_ocupado);
+    }
+
+    printf("\nDigite o ID do inquilino que esta saindo: ");
+    id_busca = ler_opcao_segura();
+
+    for (i = 0; i < total_inquilinos; i++) {
+        if (inquilinos[i].id == id_busca) {
+            indice_encontrado = i;
+            break;
+        }
+    }
+
+    if (indice_encontrado == -1) {
+        printf("\nInquilino com ID %d nao encontrado!\n", id_busca);
+        pausar_sistema();
+        return;
+    }
+
+    if (inquilinos[indice_encontrado].status_pagamento == 0) {
+        printf("\nATENCAO: Este inquilino possui pendencias financeiras (Aluguel nao pago)!\n");
+        printf("Deseja continuar com a baixa mesmo assim? (1 - Sim / 0 - Nao): ");
+        confirma = ler_opcao_segura();
+        if(confirma != 1){
+            printf("\nOperacao cancelada.\n");
+            pausar_sistema();
+            return;
+        }
+    }
+
+    quarto_liberar = inquilinos[indice_encontrado].quarto_ocupado;
+
+    for (i = 0; i < MAX_KITNETS; i++) {
+        if (kitnets[i].numero == quarto_liberar) {
+            kitnets[i].status = 0; 
+            break;
+        }
+    }
+
+    for (i = indice_encontrado; i < total_inquilinos - 1; i++) {
+        inquilinos[i] = inquilinos[i + 1];
+    }
+    total_inquilinos--;
+
+    printf("\nInquilino removido e Quarto %d liberado com sucesso!\n", quarto_liberar);
+    pausar_sistema();
+}
+
+void registrar_pagamento(Inquilino inquilinos[], Kitnet kitnets[]) {
+    int i, k;
+    int encontrou_pendente = 0;
+    int id_pgto;
+    int idx = -1;
+    float valor_pago = 0.0f;
+
+    exibir_cabecalho("Registrar Pagamento de Aluguel (RF08)");
+
+    if (total_inquilinos == 0) {
+        printf("Nenhum inquilino cadastrado no sistema.\n");
+        pausar_sistema();
+        return;
+    }
+
+    printf("Inquilinos com pendencias:\n");
+    
+    for (i = 0; i < total_inquilinos; i++) {
+        if (inquilinos[i].status_pagamento == 0) {
+            printf("ID: %d | Nome: %s | Quarto: %d\n", inquilinos[i].id, inquilinos[i].nome, inquilinos[i].quarto_ocupado);
+            encontrou_pendente = 1;
+        }
+    }
+
+    if (!encontrou_pendente) {
+        printf("Todos os inquilinos estao em dia com o pagamento!\n");
+        pausar_sistema();
+        return;
+    }
+
+    printf("\nDigite o ID do inquilino que efetuou o pagamento: ");
+    id_pgto = ler_opcao_segura();
+
+    for (i = 0; i < total_inquilinos; i++) {
+        if (inquilinos[i].id == id_pgto && inquilinos[i].status_pagamento == 0) {
+            idx = i;
+            break;
+        }
+    }
+
+    if (idx == -1) {
+        printf("\nID invalido ou inquilino ja realizou o pagamento.\n");
+    } else {
+        inquilinos[idx].status_pagamento = 1;
+        
+        for (k = 0; k < MAX_KITNETS; k++) {
+            if (kitnets[k].numero == inquilinos[idx].quarto_ocupado) {
+                valor_pago = kitnets[k].valor_aluguel;
+                break;
+            }
+        }
+
+        printf("\n====================================================\n");
+        printf("              COMPROVANTE DE PAGAMENTO              \n");
+        printf("====================================================\n");
+        printf(" Recebemos de: %s\n", inquilinos[idx].nome);
+        printf(" CPF: %s\n", inquilinos[idx].cpf);
+        printf(" Referente a Kitnet: %d\n", inquilinos[idx].quarto_ocupado);
+        printf(" Valor Pago: R$ %.2f\n", valor_pago);
+        printf(" Status: LIQUIDADO\n");
+        printf("====================================================\n");
+        printf("Pagamento registrado com sucesso!\n");
+    }
+    
+    pausar_sistema();
+}
+
+void relatorio_faturamento_e_inadimplencia(Inquilino inquilinos[], Kitnet kitnets[]) {
+    int i, k;
+    int ocupadas = 0;
+    int inadimplentes = 0;
+    float faturamento_esperado = 0.0f;
+    float faturamento_realizado = 0.0f;
+    
+    exibir_cabecalho("Relatorios e Indicadores (RF09 e RF10)");
+    
+    for (i = 0; i < MAX_KITNETS; i++) {
+        if (kitnets[i].status == 1) {
+            ocupadas++;
+            faturamento_esperado += kitnets[i].valor_aluguel;
+        }
+    }
+
+    printf("=== RESUMO DE OCUPACAO ===\n");
+    printf(" Total de Kitnets: %d\n", MAX_KITNETS);
+    printf(" Kitnets Ocupadas: %d\n", ocupadas);
+    printf(" Kitnets Livres: %d\n", MAX_KITNETS - ocupadas);
+    
+    printf("\n=== INADIMPLENCIA (RF09) ===\n");
+    for (i = 0; i < total_inquilinos; i++) {
+        if (inquilinos[i].status_pagamento == 0) {
+            printf(" - %s (Quarto %d) - PENDENTE\n", inquilinos[i].nome, inquilinos[i].quarto_ocupado);
+            inadimplentes++;
+        } else {
+            for (k = 0; k < MAX_KITNETS; k++) {
+                if (kitnets[k].numero == inquilinos[i].quarto_ocupado) {
+                    faturamento_realizado += kitnets[k].valor_aluguel;
+                    break;
+                }
+            }
+        }
+    }
+    
+    if (inadimplentes == 0 && ocupadas > 0) {
+        printf(" Nenhum inquilino inadimplente.\n");
+    } else if (ocupadas == 0) {
+         printf(" Nenhuma kitnet ocupada.\n");
+    }
+
+    printf("\n=== FATURAMENTO (RF10) ===\n");
+    printf(" Faturamento Esperado (Todas Ocupadas): R$ %.2f\n", faturamento_esperado);
+    printf(" Faturamento Realizado (Pagos): R$ %.2f\n", faturamento_realizado);
+    printf(" Deficit atual (A receber): R$ %.2f\n", faturamento_esperado - faturamento_realizado);
+    printf("----------------------------------------------------\n");
+    
+    pausar_sistema();
+}
